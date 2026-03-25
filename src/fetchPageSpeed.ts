@@ -6,9 +6,11 @@ export type Strategy = 'mobile' | 'desktop';
 
 export interface PageSpeedResult {
   performance_score: number;
-  lcp: number;   // seconds
-  inp: number;   // milliseconds
-  cls: number;   // unitless
+  lcp: number;          // seconds
+  inp: number | null;   // milliseconds, null if not available
+  cls: number;          // unitless
+  fcp: number;          // seconds
+  ttfb: number;         // milliseconds
   strategy: Strategy;
 }
 
@@ -109,16 +111,20 @@ export async function fetchPageSpeed(
     const lcpRaw = extractNumeric(audits, 'largest-contentful-paint');
     const inpRaw = extractNumeric(audits, 'interaction-to-next-paint') ?? extractNumeric(audits, 'experimental-interaction-to-next-paint');
     const clsRaw = extractNumeric(audits, 'cumulative-layout-shift');
+    const fcpRaw = extractNumeric(audits, 'first-contentful-paint');
+    const ttfbRaw = extractNumeric(audits, 'server-response-time');
 
-    if (lcpRaw === null || inpRaw === null || clsRaw === null) {
+    if (lcpRaw === null || clsRaw === null || fcpRaw === null || ttfbRaw === null) {
       return { error: 'parse_error', message: 'One or more Core Web Vitals metrics missing from API response.' };
     }
 
     return {
       performance_score: Math.round(performanceScore * 100),
       lcp: toSeconds(lcpRaw),
-      inp: Math.round(inpRaw),
+      inp: inpRaw !== null ? Math.round(inpRaw) : null,
       cls: Math.round(clsRaw * 1000) / 1000,
+      fcp: toSeconds(fcpRaw),
+      ttfb: Math.round(ttfbRaw),
       strategy,
     };
   } catch (parseErr) {
