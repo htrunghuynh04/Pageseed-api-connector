@@ -71,6 +71,9 @@ if (MODE === 'sse' || MODE === 'both' || MODE === 'http') {
     const sseTransports = {};
     app.get('/sse', async (req, res) => {
         console.error('[SSE] New connection');
+        res.setHeader('X-Accel-Buffering', 'no');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
         const transport = new SSEServerTransport('/messages', res);
         sseTransports[transport.sessionId] = transport;
         res.on('close', () => {
