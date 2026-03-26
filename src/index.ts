@@ -6,66 +6,68 @@ import cors from 'cors';
 import { z } from 'zod';
 import { fetchPageSpeed, PageSpeedResult, PageSpeedError } from './fetchPageSpeed.js';
 
-// ── Server setup ──────────────────────────────────────────────────────────────
+// ── Factory: create a new McpServer per connection ────────────────────────────
 
-const server = new McpServer({
-  name: 'pagespeed-mcp',
-  version: '1.0.0',
-});
+function createServer(): McpServer {
+  const server = new McpServer({
+    name: 'pagespeed-mcp',
+    version: '1.0.0',
+  });
 
-// ── Tool: getPageSpeed ────────────────────────────────────────────────────────
+  server.tool(
+    'getPageSpeed',
+    'Call Google PageSpeed Insights API to get Core Web Vitals and Performance Score for a URL. ' +
+    'Returns performance_score (0-100), LCP in seconds, INP in ms, and CLS. ' +
+    'Call twice per URL — once with strategy=mobile and once with strategy=desktop — then combine into a comparison table. ' +
+    'If any error is returned, do NOT hallucinate scores. Report the error clearly and direct the user to pagespeed.web.dev for manual measurement.',
+    {
+      url: z.string().url('Must be a valid URL including https://'),
+      strategy: z.enum(['mobile', 'desktop']),
+      api_key: z.string().min(1, 'API key is required'),
+    },
+    async ({ url, strategy, api_key }) => {
+      console.error(`[PageSpeed] Fetching ${strategy} scores for: ${url}`);
 
-server.tool(
-  'getPageSpeed',
-  'Call Google PageSpeed Insights API to get Core Web Vitals and Performance Score for a URL. ' +
-  'Returns performance_score (0-100), LCP in seconds, INP in ms, and CLS. ' +
-  'Call twice per URL — once with strategy=mobile and once with strategy=desktop — then combine into a comparison table. ' +
-  'If any error is returned, do NOT hallucinate scores. Report the error clearly and direct the user to pagespeed.web.dev for manual measurement.',
-  {
-    url: z.string().url('Must be a valid URL including https://'),
-    strategy: z.enum(['mobile', 'desktop']),
-    api_key: z.string().min(1, 'API key is required'),
-  },
-  async ({ url, strategy, api_key }) => {
-    console.error(`[PageSpeed] Fetching ${strategy} scores for: ${url}`);
+      const result = await fetchPageSpeed(url, strategy, api_key);
 
-    const result = await fetchPageSpeed(url, strategy, api_key);
+      if ('error' in result) {
+        const err = result as PageSpeedError;
+        console.error(`[PageSpeed] Error: ${err.error} — ${err.message}`);
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              error: err.error,
+              message: err.message,
+              fallback_instruction: 'PageSpeed API is unavailable. Please measure manually at https://pagespeed.web.dev and record N/A — Manual check required in the report.',
+            }, null, 2),
+          }],
+          isError: true,
+        };
+      }
 
-    // Error case — return structured error, never fake scores
-    if ('error' in result) {
-      const err = result as PageSpeedError;
-      console.error(`[PageSpeed] Error: ${err.error} — ${err.message}`);
+      const data = result as PageSpeedResult;
+      console.error(`[PageSpeed] Success — score: ${data.performance_score}, LCP: ${data.lcp}s, INP: ${data.inp}ms, CLS: ${data.cls}`);
+
       return {
         content: [{
           type: 'text',
           text: JSON.stringify({
-            error: err.error,
-            message: err.message,
-            fallback_instruction: 'PageSpeed API is unavailable. Please measure manually at https://pagespeed.web.dev and record N/A — Manual check required in the report.',
+            performance_score: data.performance_score,
+            lcp: data.lcp,
+            inp: data.inp,
+            cls: data.cls,
+            fcp: data.fcp,
+            ttfb: data.ttfb,
+            strategy: data.strategy,
           }, null, 2),
         }],
-        isError: true,
       };
     }
+  );
 
-    // Success case
-    const data = result as PageSpeedResult;
-    console.error(`[PageSpeed] Success — score: ${data.performance_score}, LCP: ${data.lcp}s, INP: ${data.inp}ms, CLS: ${data.cls}`);
-
-    return {
-      content: [{
-        type: 'text',
-        text: JSON.stringify({
-          performance_score: data.performance_score,
-          lcp: data.lcp,
-          inp: data.inp,
-          cls: data.cls,
-          strategy: data.strategy,
-        }, null, 2),
-      }],
-    };
-  }
-);
+  return server;
+}
 
 // ── Express app ───────────────────────────────────────────────────────────────
 
@@ -87,7 +89,7 @@ if (ENABLE_CORS) {
 if (MODE === 'sse' || MODE === 'both' || MODE === 'http') {
   const sseTransports: Record<string, SSEServerTransport> = {};
 
-  app.get('/sse', async (req, res) => {
+  app.get('/sse', async (_req, res) => {
     console.error('[SSE] New connection');
     res.setHeader('X-Accel-Buffering', 'no');
     res.setHeader('Cache-Control', 'no-cache');
@@ -98,7 +100,7 @@ if (MODE === 'sse' || MODE === 'both' || MODE === 'http') {
       delete sseTransports[transport.sessionId];
       console.error(`[SSE] Connection closed: ${transport.sessionId}`);
     });
-    await server.connect(transport);
+    await createServer().connect(transport);
   });
 
   app.post('/messages', async (req, res) => {
@@ -115,20 +117,13 @@ if (MODE === 'sse' || MODE === 'both' || MODE === 'http') {
 // ── Streamable HTTP transport ─────────────────────────────────────────────────
 
 if (MODE === 'streamable' || MODE === 'both') {
-  const httpTransports: Record<string, StreamableHTTPServerTransport> = {};
-
   app.all('/mcp', async (req, res) => {
     const sessionId = req.headers['mcp-session-id'] as string | undefined;
 
     if (req.method === 'POST' && !sessionId) {
       const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-      await server.connect(transport);
+      await createServer().connect(transport);
       await transport.handleRequest(req, res);
-      return;
-    }
-
-    if (sessionId && httpTransports[sessionId]) {
-      await httpTransports[sessionId].handleRequest(req, res);
       return;
     }
 
