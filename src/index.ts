@@ -24,9 +24,9 @@ function createServer(): McpServer {
     {
       url: z.string().url('Must be a valid URL including https://'),
       strategy: z.enum(['mobile', 'desktop']),
-      api_key: z.string().min(1, 'API key is required'),
     },
-    async ({ url, strategy, api_key }) => {
+    async ({ url, strategy }) => {
+      const api_key = process.env.PAGESPEED_API_KEY ?? '';
       console.error(`[PageSpeed] Fetching ${strategy} scores for: ${url}`);
 
       const result = await fetchPageSpeed(url, strategy, api_key);
