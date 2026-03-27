@@ -96,7 +96,13 @@ if (MODE === 'sse' || MODE === 'both' || MODE === 'http') {
     res.setHeader('Connection', 'keep-alive');
     const transport = new SSEServerTransport('/messages', res);
     sseTransports[transport.sessionId] = transport;
+
+    const keepAlive = setInterval(() => {
+      res.write(': ping\n\n');
+    }, 15000);
+
     res.on('close', () => {
+      clearInterval(keepAlive);
       delete sseTransports[transport.sessionId];
       console.error(`[SSE] Connection closed: ${transport.sessionId}`);
     });
