@@ -4,6 +4,7 @@ import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import express from 'express';
 import cors from 'cors';
 import { z } from 'zod';
+import { randomUUID } from 'crypto';
 import { fetchPageSpeed, PageSpeedResult, PageSpeedError } from './fetchPageSpeed.js';
 
 // ── Factory: create a new McpServer per connection ────────────────────────────
@@ -123,13 +124,26 @@ if (MODE === 'sse' || MODE === 'both' || MODE === 'http') {
 // ── Streamable HTTP transport ─────────────────────────────────────────────────
 
 if (MODE === 'streamable' || MODE === 'both') {
+  const httpTransports = new Map<string, StreamableHTTPServerTransport>();
+
   app.all('/mcp', async (req, res) => {
     const sessionId = req.headers['mcp-session-id'] as string | undefined;
 
     if (req.method === 'POST' && !sessionId) {
-      const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: () => randomUUID(),
+        onsessioninitialized: (id) => { httpTransports.set(id, transport); },
+      });
+      transport.onclose = () => {
+        if (transport.sessionId) httpTransports.delete(transport.sessionId);
+      };
       await createServer().connect(transport);
       await transport.handleRequest(req, res);
+      return;
+    }
+
+    if (sessionId && httpTransports.has(sessionId)) {
+      await httpTransports.get(sessionId)!.handleRequest(req, res);
       return;
     }
 
