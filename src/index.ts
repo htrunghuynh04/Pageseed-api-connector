@@ -73,7 +73,7 @@ function createServer(): McpServer {
 
 const app = express();
 const PORT = parseInt(process.env.PORT ?? '3001');
-const MODE = process.env.MODE ?? 'http';
+const MODE = process.env.MODE ?? 'both';
 const ENABLE_CORS = process.env.ENABLE_CORS === 'true';
 
 app.use(express.json());
