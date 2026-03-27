@@ -138,12 +138,12 @@ if (MODE === 'streamable' || MODE === 'both') {
         if (transport.sessionId) httpTransports.delete(transport.sessionId);
       };
       await createServer().connect(transport);
-      await transport.handleRequest(req, res);
+      await transport.handleRequest(req, res, req.body);
       return;
     }
 
     if (sessionId && httpTransports.has(sessionId)) {
-      await httpTransports.get(sessionId)!.handleRequest(req, res);
+      await httpTransports.get(sessionId)!.handleRequest(req, res, req.body);
       return;
     }
 
