@@ -24,7 +24,7 @@ export type PageSpeedResponse = PageSpeedResult | PageSpeedError;
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const PAGESPEED_API = 'https://www.googleapis.com/pagespeedonline/v5/runPagespeed';
-const TIMEOUT_MS = 60000;
+const TIMEOUT_MS = 90000;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
