@@ -147,7 +147,7 @@ if (MODE === 'streamable' || MODE === 'both') {
       return;
     }
 
-    res.status(400).json({ error: 'Bad Request: No valid session ID provided' });
+    res.status(404).json({ error: 'Session not found, please reinitialize' });
   });
 }
 
